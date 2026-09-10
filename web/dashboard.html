@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkBuddy2API 网关管理控制台</title>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card-bg: #151c2e;
+            --border: #232f48;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --code-bg: #070b14;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Helvetica Neue", sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding-bottom: 4rem;
+        }
+        header {
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 0.85rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .btn {
+            background: var(--border);
+            color: var(--text-main);
+            border: none;
+            border-radius: 0.375rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            transition: all 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-sm { padding: 0.25rem 0.625rem; font-size: 0.75rem; }
+        
+        .main-content {
+            max-width: 1400px;
+            margin: 1.5rem auto 0;
+            padding: 0 1.5rem;
+        }
+        
+        /* 选项卡导航 */
+        .tabs-nav {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.75rem 1.25rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--text-main); }
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+        .stat-val {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        .stat-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+        .panel-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255,255,255,0.01);
+        }
+        .panel-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.875rem;
+        }
+        th, td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        th {
+            background: #101626;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        tr:last-child td { border-bottom: none; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-info { background: rgba(59, 130, 246, 0.15); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.3); }
+        
+        .progress-bar-wrap {
+            width: 120px;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 0.35rem;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 3px;
+        }
+
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            backdrop-filter: blur(4px);
+        }
+        .modal-body {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 580px;
+            width: 90%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        .spinner {
+            display: inline-block;
+            width: 1.2rem;
+            height: 1.2rem;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .flex { display: flex; align-items: center; gap: 0.5rem; }
+
+        /* 配置表单 */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.25rem;
+            padding: 1.5rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .form-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+        .form-input, .form-select {
+            background: #0d1322;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 0.65rem 0.85rem;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus, .form-select:focus {
+            border-color: var(--primary);
+        }
+        .form-help {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        /* 日志窗口 */
+        .log-container {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.825rem;
+            line-height: 1.6;
+            color: #cbd5e1;
+            height: 520px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .log-line {
+            padding: 0.15rem 0;
+            border-bottom: 1px dashed rgba(255,255,255,0.04);
+        }
+        .log-line:hover {
+            background: rgba(255,255,255,0.03);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <span style="font-size: 1.5rem;">⚡</span>
+            <span>WorkBuddy2API 网关中心</span>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-success" onclick="batchCheckinAll()">🚀 全员一键签到</button>
+            <button class="btn btn-primary" onclick="openOAuthModal()">+ 添加账号</button>
+            <button class="btn" onclick="restartContainer()">🔄 重启网关</button>
+            <button class="btn" onclick="logout()">退出</button>
+        </div>
+    </header>
+
+    <div class="main-content">
+        <!-- 导航选项卡 -->
+        <div class="tabs-nav">
+            <button class="tab-btn active" onclick="switchTab('overview')">📊 概览与账号池</button>
+            <button class="tab-btn" onclick="switchTab('policy')">⚙️ 调度策略与参数</button>
+            <button class="tab-btn" onclick="switchTab('logs')">📜 实时请求审计日志</button>
+            <button class="tab-btn" onclick="switchTab('test')">🧪 在线调试与模型清单</button>
+        </div>
+
+        <!-- TAB 1: 概览与账号池 -->
+        <div id="tab-overview" class="tab-pane active">
+            <!-- 统计卡片 -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">总积分配额 / 剩余额度</span>
+                    <span class="stat-val" id="totalCredits">-- / --</span>
+                    <span class="stat-desc" id="creditPercent">剩余率: --%</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">账号池规模 (总数 / 健康)</span>
+                    <span class="stat-val" id="accountCounts">-- / --</span>
+                    <span class="stat-desc" id="poolStatusDesc">冷却中: 0 | 禁用: 0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">并发租约隔离 (In Flight)</span>
+                    <span class="stat-val" id="inFlight">0</span>
+                    <span class="stat-desc" id="stickyCount">活跃会话粘性: 0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">网关 API 密钥 (Key)</span>
+                    <span class="stat-val" style="font-size: 1.1rem; font-family: monospace; cursor: pointer; color: #38bdf8;" onclick="copyKey()" id="apiKeyDisplay" title="点击复制">--</span>
+                    <span class="stat-desc">用于客户端/NewAPI渠道 Bearer 调用</span>
+                </div>
+            </div>
+
+            
+            <!-- 每日 Token 与精确积分消耗报表（支持输入、输出、缓存命中与扣分） -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">📈 每日 Token 详细吞吐与上游精确积分消耗</span>
+                    <div class="flex">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">逐日明细取自网关日志；配额与扣减以官方计费接口为准</span>
+                        <button class="btn btn-sm" onclick="loadDailyReport()">🔄 刷新报表</button>
+                    </div>
+                </div>
+                <div style="padding: 1.25rem 1.5rem 0.5rem;">
+                    <div class="stats-grid" style="margin-bottom: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">今日总 Token (输入 / 输出)</span>
+                            <span class="stat-val" id="todayTokens" style="color: #38bdf8;">--</span>
+                            <span class="stat-desc" id="todayInOut">输入: -- | 输出: --</span>
+                        </div>
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">上下文缓存命中 (Cache)</span>
+                            <span class="stat-val" id="todayCacheRate" style="color: #a855f7;">--</span>
+                            <span class="stat-desc" id="todayCacheTokens">命中 Tokens: --</span>
+                        </div>
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">官方实际扣减积分 (全池累计)</span>
+                            <span class="stat-val" id="todayCostCredits" style="color: #f59e0b;">--</span>
+                            <span class="stat-desc" id="todayCostCreditsDesc">来自官方计费接口 · 与账号卡片同口径</span>
+                        </div>
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">今日平均吞吐 / 响应</span>
+                            <span class="stat-val" id="todaySpeed" style="color: #10b981;">--</span>
+                            <span class="stat-desc" id="todayAvgTtfb">平均首字延迟: --</span>
+                        </div>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>统计日期</th>
+                            <th>请求数 (成功率)</th>
+                            <th>输入 Tokens</th>
+                            <th>输出 Tokens</th>
+                            <th>缓存命中 Tokens (命中率)</th>
+                            <th>上游 credit 累计 (网关计量)</th>
+                            <th>平均速率 / 延迟</th>
+                            <th>涉及模型与调用分布</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyReportTable">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">正在分析计算历史每日详细消耗...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 账号池列表 -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">👥 账号池成员详情与签到状态</span>
+                    <div class="flex">
+                        <button class="btn btn-sm" onclick="loadOverview()">🔄 刷新列表</button>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>昵称</th>
+                            <th>UID</th>
+                            <th>今日签到状态</th>
+                            <th>剩余积分 / 配额 (最近到期)</th>
+                            <th>健康状态</th>
+                            <th>成功调用</th>
+                            <th>在途 / 熔断</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountTable">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">正在拉取账号池数据...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 2: 调度策略与参数配置 -->
+        <div id="tab-policy" class="tab-pane">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">⚙️ 多账号加权调度与防雪崩熔断策略配置</span>
+                    <button class="btn btn-primary btn-sm" onclick="savePolicyConfig()">💾 保存配置并平滑重载</button>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <div class="form-label">单号最大并发租约 (max_in_flight) <span>推荐: 2 ~ 5</span></div>
+                        <input type="number" id="cfg_max_in_flight" class="form-input" min="0" max="20">
+                        <span class="form-help">单个账号允许同时处理的最大在途请求数（0 为不限）。达到上限时请求自动跳至其他账号。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">熔断连续失败阈值 (breaker_threshold) <span>默认: 3</span></div>
+                        <input type="number" id="cfg_breaker_threshold" class="form-input" min="1" max="10">
+                        <span class="form-help">单账号连续失败达到此次数后，自动触发熔断隔离，防止下游请求持续失败。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">熔断基础退避时长 (breaker_cooldown) <span>默认: 30m</span></div>
+                        <input type="text" id="cfg_breaker_cooldown" class="form-input">
+                        <span class="form-help">首次触发熔断时的静默隔离时长，支持 s/m/h（如 30m）。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">熔断封顶退避时长 (breaker_cooldown_max) <span>默认: 6h</span></div>
+                        <input type="text" id="cfg_breaker_cooldown_max" class="form-input">
+                        <span class="form-help">多次熔断指数级增长时的最大隔离上限。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">闲置补偿权重/小时 (idle_weight_per_hour) <span>默认: 0.5</span></div>
+                        <input type="number" step="0.1" id="cfg_idle_weight_per_hour" class="form-input">
+                        <span class="form-help">每闲置一小时增加的调度权重，让冷账号自动获得轮转机会。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">闲置补偿权重上限 (idle_weight_max) <span>默认: 5.0</span></div>
+                        <input type="number" step="0.1" id="cfg_idle_weight_max" class="form-input">
+                        <span class="form-help">闲置补偿最高加权上限。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">429/404 频控软冷却时长 (soft_rate) <span>默认: 60s</span></div>
+                        <input type="text" id="cfg_soft_rate" class="form-input">
+                        <span class="form-help">遇到上游 429 速率限制或 404 时的临时冷静时间。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">定时自动签到整点 (checkin_hours) <span>如: 9, 21</span></div>
+                        <input type="text" id="cfg_checkin_hours" class="form-input" placeholder="9, 21">
+                        <span class="form-help">每天定时自动遍历账号执行打卡签到并同步积分的小时数。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">定时保活刷新 Token 整点 (keepalive_hours) <span>默认: 22</span></div>
+                        <input type="text" id="cfg_keepalive_hours" class="form-input" placeholder="22">
+                        <span class="form-help">每天定时刷新账号 access token 防止凭证过期的整点。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">启用会话粘性 (session_sticky) <span>推荐开启</span></div>
+                        <select id="cfg_session_sticky" class="form-select">
+                            <option value="true">开启（同会话绑定同一账号，对话上下文更稳定）</option>
+                            <option value="false">关闭（每次请求完全随机三因子轮转）</option>
+                        </select>
+                        <span class="form-help">根据 conversation_id 维持会话绑定。</span>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">出站指纹黑名单脱敏 (sanitize_fingerprints)</div>
+                        <select id="cfg_sanitize_fingerprints" class="form-select">
+                            <option value="true">开启（自动剥离上游不可识别的黑名单追踪参数）</option>
+                            <option value="false">关闭</option>
+                        </select>
+                        <span class="form-help">提升多账号调用的安全合规性。</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: 实时请求审计日志 -->
+        <div id="tab-logs" class="tab-pane">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">📜 实时请求审计流水 (包含 TTFB、Token速率、选号UID)</span>
+                    <div class="flex">
+                        <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem;">
+                            <input type="checkbox" id="autoScrollLogs" checked> 自动滚动到底部
+                        </label>
+                        <button class="btn btn-sm" onclick="fetchLogs()">🔄 刷新日志</button>
+                    </div>
+                </div>
+                <div class="log-container" id="logBox">正在加载实时请求日志...</div>
+            </div>
+        </div>
+
+        <!-- TAB 4: 在线调试与模型清单 -->
+        <div id="tab-test" class="tab-pane">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">🧪 模型对话快速自测</span>
+                </div>
+                <div style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <select id="testModel" style="background: #0d1322; border: 1px solid var(--border); color: white; padding: 0.65rem 1rem; border-radius: 0.5rem; outline: none; min-width: 220px;">
+                            <option value="deepseek-v4.1-flash">deepseek-v4.1-flash (推荐)</option>
+                            <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+                            <option value="glm-5.3">glm-5.3</option>
+                            <option value="glm-5.3-flash">glm-5.3-flash</option>
+                            <option value="kimi-k3-1">kimi-k3-1</option>
+                            <option value="minimax-m3">minimax-m3</option>
+                            <option value="hy4-preview">hy4-preview</option>
+                        </select>
+                        <input type="text" id="testPrompt" placeholder="输入测试问题..." value="你好，请介绍一下你自己" style="flex: 1; background: #0d1322; border: 1px solid var(--border); color: white; padding: 0.65rem 1rem; border-radius: 0.5rem; outline: none;">
+                        <button class="btn btn-primary" id="btnTest" onclick="runChatTest()">🚀 发送测试调用</button>
+                    </div>
+                    <div id="testOutput" style="background: var(--code-bg); border: 1px solid var(--border); padding: 1.25rem; border-radius: 0.5rem; min-height: 120px; font-family: 'SFMono-Regular', Consolas, monospace; white-space: pre-wrap; font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">等待测试发起...</div>
+                </div>
+            </div>
+
+            <!-- 动态可用模型列表 -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">📋 腾讯 CodeBuddy 动态可用模型清单（按计费倍率升序 · 折扣优先）</span>
+                    <div class="flex">
+                        <span id="modelsFreshness" style="font-size: 0.8rem; color: var(--text-muted); margin-right: 0.5rem;">--</span>
+                        <button class="btn btn-sm" onclick="loadModels(true)">🔄 强制刷新</button>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>模型 ID</th>
+                            <th>计费倍率</th>
+                            <th>促销 / 折扣</th>
+                            <th>最大上下文 (Context)</th>
+                            <th>单次最大输出 (Max Tokens)</th>
+                            <th>归属</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modelsTable">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">正在拉取可用模型...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- OAuth 登录弹窗 -->
+    <div class="modal" id="oauthModal">
+        <div class="modal-body">
+            <div class="modal-title">🔑 快速授权添加新账号</div>
+            <p style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.6;">
+                点击下方按钮将在新标签页中打开腾讯 CodeBuddy 官方设备授权页。授权完成后，系统将自动捕获凭证、落盘并热重启网关加入池中。
+            </p>
+            <div id="oauthLoading" style="text-align: center; padding: 2rem 0; display: none;">
+                <div class="spinner" style="width: 2.5rem; height: 2.5rem; border-width: 3px;"></div>
+                <p style="margin-top: 1rem; color: var(--text-muted);" id="oauthStatusText">正在请求授权链接...</p>
+            </div>
+            <div id="oauthAction">
+                <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button class="btn" onclick="closeOAuthModal()">取消</button>
+                    <button class="btn btn-primary" onclick="startOAuthFlow()">生成授权链接并打开</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cachedApiKey = "";
+        let pollTimer = null;
+        let logInterval = null;
+        let modelsInterval = null;
+
+        function switchTab(name) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + name).classList.add('active');
+            if (name === 'logs') {
+                fetchLogs();
+                if (!logInterval) logInterval = setInterval(fetchLogs, 4000);
+            } else {
+                if (logInterval) { clearInterval(logInterval); logInterval = null; }
+            }
+            if (name === 'test') {
+                loadModels(true);
+                // 倍率/促销随时变，进入该页后定期强制刷新；离开则停，不与 logs 页争流量。
+                if (!modelsInterval) modelsInterval = setInterval(() => loadModels(true), 60000);
+            } else {
+                if (modelsInterval) { clearInterval(modelsInterval); modelsInterval = null; }
+            }
+        }
+
+        async function loadOverview() {
+            try {
+                const res = await fetch('/api/overview');
+                if (res.status === 401) { location.href = '/login'; return; }
+                const data = await res.json();
+                renderOverview(data);
+                populatePolicy(data.config);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        
+        async function loadDailyReport() {
+            try {
+                const res = await fetch('/api/daily-report');
+                if (!res.ok) return;
+                const data = await res.json();
+                renderDailyReport(data);
+            } catch (e) {
+                console.error("加载每日消耗失败:", e);
+            }
+        }
+
+        function renderDailyReport(data) {
+            const today = data.today || {};
+            const totalTok = (today.total_tokens || (today.prompt_tokens + today.comp_tokens) || 0);
+            document.getElementById('todayTokens').textContent = totalTok.toLocaleString() + ' tok';
+            document.getElementById('todayInOut').textContent = `入: ${(today.prompt_tokens||0).toLocaleString()} | 出: ${(today.comp_tokens||0).toLocaleString()}`;
+            document.getElementById('todayCacheRate').textContent = today.cache_rate || '0.0%';
+            document.getElementById('todayCacheTokens').textContent = `命中: ${(today.hit_tokens||0).toLocaleString()} tok`;
+            const off = data.official || {};
+            const logCredit = data.log_credit_total || 0;
+            document.getElementById('todayCostCredits').textContent = ((off.used !== undefined && off.used !== null) ? off.used : '--') + ' 点';
+            if (off.used !== undefined) {
+                document.getElementById('todayCostCreditsDesc').textContent =
+                    `官方已用 ${off.used} / 总额 ${off.size} · 网关 credit 累计 ${logCredit.toFixed(2)}`;
+            }
+            document.getElementById('todaySpeed').textContent = (today.avg_speed || 0) + ' tok/s';
+            document.getElementById('todayAvgTtfb').textContent = `平均首字延迟: ${today.avg_ttfb || '-'}ms`;
+
+            const tbody = document.getElementById('dailyReportTable');
+            if (!data.daily || data.daily.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无历史按日调用数据</td></tr>';
+                return;
+            }
+
+            let html = '';
+            data.daily.forEach(d => {
+                let modelBadges = '';
+                if (d.models) {
+                    for (const [m, count] of Object.entries(d.models)) {
+                        modelBadges += `<span class="badge badge-info" style="margin-right: 0.35rem;">${m}: ${count}</span>`;
+                    }
+                }
+                const cacheBadgeClass = (d.cache_rate_num > 0) ? 'badge-success' : 'badge-info';
+                html += `
+                <tr>
+                    <td><strong>${d.date}</strong></td>
+                    <td>${d.requests} 次 <span class="badge badge-${d.rate_num >= 95 ? 'success' : 'warning'}" style="margin-left: 0.25rem;">${d.success_rate}</span></td>
+                    <td style="color: #94a3b8;">${(d.prompt_tokens || 0).toLocaleString()}</td>
+                    <td><strong style="color: #38bdf8;">${(d.comp_tokens || 0).toLocaleString()}</strong></td>
+                    <td>${(d.hit_tokens || 0).toLocaleString()} <span class="badge ${cacheBadgeClass}" style="margin-left: 0.25rem;">${d.cache_rate || '0.0%'}</span></td>
+                    <td><strong style="color: #f59e0b;">${d.cost_credits !== undefined ? d.cost_credits : 0} 点</strong></td>
+                    <td>${d.avg_speed} tok/s <span style="font-size: 0.75rem; color: #64748b;">(${d.avg_ttfb}ms)</span></td>
+                    <td>${modelBadges || '-'}</td>
+                </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function renderOverview(data) {
+            cachedApiKey = data.api_key;
+            document.getElementById('totalCredits').textContent = `${data.total_remain} / ${data.total_size}`;
+            const pct = data.total_size > 0 ? Math.round(data.total_remain * 100 / data.total_size) : 0;
+            document.getElementById('creditPercent').textContent = `整体剩余率: ${pct}%`;
+            document.getElementById('accountCounts').textContent = `${data.total_accounts} / ${data.healthy}`;
+            document.getElementById('poolStatusDesc').textContent = `冷却中: ${data.cooling} | 故障禁用: ${data.disabled}`;
+            document.getElementById('inFlight').textContent = data.in_flight || 0;
+            document.getElementById('stickyCount').textContent = `活跃会话粘性: ${data.sticky_sessions || 0}`;
+            document.getElementById('apiKeyDisplay').textContent = data.api_key ? (data.api_key.substring(0, 10) + '...') : '未设置';
+
+            const tbody = document.getElementById('accountTable');
+            if (!data.accounts || data.accounts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">当前账号池为空，请点击右上角添加账号</td></tr>';
+                return;
+            }
+
+            let html = '';
+            data.accounts.forEach(a => {
+                const apct = a.size > 0 ? Math.round(a.remain * 100 / a.size) : 0;
+                const checkinBadge = a.checked_today 
+                    ? '<span class="badge badge-success">✓ 今日已签到</span>'
+                    : '<span class="badge badge-warning">⏳ 今日未签到</span>';
+                
+                let expiryHint = '<span style="color: var(--text-muted); font-size: 0.75rem;">长期有效</span>';
+                if (a.earliest_end) {
+                    expiryHint = `<span style="color: #f59e0b; font-size: 0.75rem;" title="最近批次到期时间">⏳ 临近到期: ${a.earliest_end.substring(0, 16)}</span>`;
+                }
+
+                let pkgTooltip = '';
+                if (a.pkg_details && a.pkg_details.length > 0) {
+                    pkgTooltip = a.pkg_details.map(p => `${p.name || '套餐'}: 余 ${p.remain}/${p.size} (到期: ${p.cycle_end ? p.cycle_end.substring(0,10) : '无'})`).join('\n');
+                }
+
+                html += `
+                <tr>
+                    <td><strong>${escapeHtml(a.nickname)}</strong></td>
+                    <td style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">${a.uid}</td>
+                    <td>${checkinBadge}</td>
+                    <td title="${escapeHtml(pkgTooltip)}" style="cursor: help;">
+                        <div style="font-weight: 600;">余 ${a.remain} / ${a.size} <span style="color: var(--text-muted); font-weight: 400;">(已用 ${a.used || (a.size - a.remain)}, ${apct}%)</span></div>
+                        <div class="progress-bar-wrap">
+                            <div class="progress-fill" style="width: ${apct}%;"></div>
+                        </div>
+                        <div style="margin-top: 0.25rem;">${expiryHint}</div>
+                    </td>
+                    <td><span class="badge badge-${a.status_badge}">${a.status_text}</span></td>
+                    <td>${a.success_count || 0} 次</td>
+                    <td>${a.in_flight || 0} / ${a.breaker_fails || 0}</td>
+                    <td>
+                        <div class="flex">
+                            <button class="btn btn-sm" onclick="checkinAccount('${a.uid}')" title="立即打卡签到">打卡</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAccount('${a.uid}', '${escapeHtml(a.nickname)}')" title="删除凭证">删除</button>
+                        </div>
+                    </td>
+                </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function populatePolicy(cfg) {
+            if (!cfg) return;
+            if (cfg.pool) {
+                document.getElementById('cfg_max_in_flight').value = cfg.pool.max_in_flight ?? 3;
+                document.getElementById('cfg_breaker_threshold').value = cfg.pool.breaker_threshold ?? 3;
+                document.getElementById('cfg_breaker_cooldown').value = cfg.pool.breaker_cooldown || '30m';
+                document.getElementById('cfg_breaker_cooldown_max').value = cfg.pool.breaker_cooldown_max || '6h';
+                document.getElementById('cfg_idle_weight_per_hour').value = cfg.pool.idle_weight_per_hour ?? 0.5;
+                document.getElementById('cfg_idle_weight_max').value = cfg.pool.idle_weight_max ?? 5.0;
+            }
+            if (cfg.cooldown) {
+                document.getElementById('cfg_soft_rate').value = cfg.cooldown.soft_rate || '60s';
+            }
+            if (cfg.schedule) {
+                document.getElementById('cfg_checkin_hours').value = (cfg.schedule.checkin_hours || []).join(', ');
+                document.getElementById('cfg_keepalive_hours').value = (cfg.schedule.keepalive_hours || []).join(', ');
+            }
+            if (cfg.session_sticky) {
+                document.getElementById('cfg_session_sticky').value = cfg.session_sticky.enabled ? 'true' : 'false';
+            }
+            if (cfg.features) {
+                document.getElementById('cfg_sanitize_fingerprints').value = cfg.features.sanitize_blacklist_fingerprints ? 'true' : 'false';
+            }
+        }
+
+        async function savePolicyConfig() {
+            const checkin_hours = document.getElementById('cfg_checkin_hours').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+            const keepalive_hours = document.getElementById('cfg_keepalive_hours').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+
+            const patch = {
+                pool: {
+                    max_in_flight: parseInt(document.getElementById('cfg_max_in_flight').value) || 0,
+                    breaker_threshold: parseInt(document.getElementById('cfg_breaker_threshold').value) || 3,
+                    breaker_cooldown: document.getElementById('cfg_breaker_cooldown').value.trim() || '30m',
+                    breaker_cooldown_max: document.getElementById('cfg_breaker_cooldown_max').value.trim() || '6h',
+                    idle_weight_per_hour: parseFloat(document.getElementById('cfg_idle_weight_per_hour').value) || 0.5,
+                    idle_weight_max: parseFloat(document.getElementById('cfg_idle_weight_max').value) || 5.0
+                },
+                cooldown: {
+                    soft_rate: document.getElementById('cfg_soft_rate').value.trim() || '60s'
+                },
+                schedule: {
+                    checkin_hours: checkin_hours.length ? checkin_hours : [9, 21],
+                    keepalive_hours: keepalive_hours.length ? keepalive_hours : [22]
+                },
+                session_sticky: {
+                    enabled: document.getElementById('cfg_session_sticky').value === 'true'
+                },
+                features: {
+                    sanitize_blacklist_fingerprints: document.getElementById('cfg_sanitize_fingerprints').value === 'true'
+                }
+            };
+
+            try {
+                const res = await fetch('/api/policy/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(patch)
+                });
+                const d = await res.json();
+                if (d.ok) {
+                    alert('策略配置已更新并重启网关生效！');
+                    loadOverview();
+        loadDailyReport();
+                } else {
+                    alert('保存失败: ' + (d.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('网络错误: ' + e);
+            }
+        }
+
+        async function fetchLogs() {
+            try {
+                const res = await fetch('/api/logs');
+                const d = await res.json();
+                const logBox = document.getElementById('logBox');
+                if (d.logs) {
+                    logBox.innerHTML = '';
+                    const lines = d.logs.split('\n');
+                    lines.forEach(l => {
+                        if (!l.trim()) return;
+                        const div = document.createElement('div');
+                        div.className = 'log-line';
+                        div.textContent = l;
+                        logBox.appendChild(div);
+                    });
+                    if (document.getElementById('autoScrollLogs').checked) {
+                        logBox.scrollTop = logBox.scrollHeight;
+                    }
+                }
+            } catch (e) {
+                console.error('获取日志失败:', e);
+            }
+        }
+
+        function creditBadge(m) {
+            const v = m.credit_multiplier;
+            if (v === null || v === undefined) return '<span class="badge badge-info">未标注</span>';
+            if (v === 0) return '<span class="badge badge-success" style="font-weight: 700;">免费 x0.00</span>';
+            if (v < 0.10) return '<span class="badge badge-success">x' + v.toFixed(2) + '</span>';
+            if (v < 0.50) return '<span class="badge badge-info">x' + v.toFixed(2) + '</span>';
+            if (v < 0.80) return '<span class="badge badge-warning">x' + v.toFixed(2) + '</span>';
+            return '<span class="badge badge-danger">x' + v.toFixed(2) + '</span>';
+        }
+
+        function fmtAge(sec) {
+            if (sec === null || sec === undefined) return '未知';
+            if (sec < 60) return sec + ' 秒前';
+            if (sec < 3600) return Math.floor(sec / 60) + ' 分钟前';
+            return (sec / 3600).toFixed(1) + ' 小时前';
+        }
+
+        async function loadModels(force) {
+            const tbody = document.getElementById('modelsTable');
+            const freshEl = document.getElementById('modelsFreshness');
+            try {
+                const url = force ? '/api/models?refresh=1' : '/api/models';
+                const res = await fetch(url);
+                const d = await res.json();
+                // 数据新鲜度：后端回带 fetched_at（上游拉取时刻）+ cache_ttl_seconds
+                if (d.fetched_at) {
+                    const age = Math.max(0, Math.floor(Date.now() / 1000) - d.fetched_at);
+                    const at = new Date(d.fetched_at * 1000).toLocaleTimeString();
+                    const stale = d.cache_ttl_seconds && age > d.cache_ttl_seconds;
+                    freshEl.textContent = '数据抓取自 ' + at + '（' + fmtAge(age) + '）';
+                    freshEl.style.color = stale ? 'var(--warning, #f59e0b)' : 'var(--text-muted)';
+                } else {
+                    freshEl.textContent = '未取到上游数据（可能回退了静态表）';
+                    freshEl.style.color = 'var(--danger)';
+                }
+                if (d.data && d.data.length > 0) {
+                    const rows = d.data.slice().sort((a, b) => {
+                        const av = (a.credit_multiplier === null || a.credit_multiplier === undefined) ? 99 : a.credit_multiplier;
+                        const bv = (b.credit_multiplier === null || b.credit_multiplier === undefined) ? 99 : b.credit_multiplier;
+                        return av - bv;
+                    });
+                    let html = '';
+                    rows.forEach(m => {
+                        const promos = (m.promo_tags || []).map(t => '<span class="badge badge-success" style="margin-right: 0.25rem;">' + t + '</span>').join('');
+                        html += `
+                        <tr>
+                            <td><strong style="color: #38bdf8;">${m.id}</strong></td>
+                            <td>${creditBadge(m)}</td>
+                            <td>${promos || '<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>'}</td>
+                            <td>${(m.context_length / 1000).toFixed(0)}K (${m.context_length} tokens)</td>
+                            <td>${(m.max_output_tokens / 1000).toFixed(0)}K (${m.max_output_tokens} tokens)</td>
+                            <td><span class="badge badge-info">${m.owned_by}</span></td>
+                        </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无可用模型</td></tr>';
+                }
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--danger);">加载模型失败</td></tr>';
+            }
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function copyKey() {
+            if (!cachedApiKey) return;
+            navigator.clipboard.writeText(cachedApiKey).then(() => {
+                alert('网关 API Key 已成功复制到剪贴板！');
+            });
+        }
+
+        async function checkinAccount(uid) {
+            try {
+                const res = await fetch('/api/account/checkin', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({uid})
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    alert('打卡结果: ' + (data.result || '成功'));
+                    loadOverview();
+        loadDailyReport();
+                } else {
+                    alert('打卡失败: ' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('网络错误: ' + e);
+            }
+        }
+
+        async function batchCheckinAll() {
+            if (!confirm('确定要为账号池内所有账号立即执行打卡签到吗？')) return;
+            try {
+                const res = await fetch('/api/account/checkin-all', {method: 'POST'});
+                const data = await res.json();
+                if (data.ok) {
+                    alert('全员签到已执行完毕！\n' + data.summary);
+                    loadOverview();
+        loadDailyReport();
+                } else {
+                    alert('执行失败: ' + (data.error || ''));
+                }
+            } catch (e) {
+                alert('网络错误: ' + e);
+            }
+        }
+
+        async function deleteAccount(uid, nickname) {
+            if (!confirm(`确定要移除账号 [${nickname}] 吗？`)) return;
+            try {
+                const res = await fetch('/api/account/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({uid})
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    alert('已删除并平滑重载账号池');
+                    loadOverview();
+        loadDailyReport();
+                }
+            } catch (e) {
+                alert('操作失败: ' + e);
+            }
+        }
+
+        async function restartContainer() {
+            if (!confirm('确定要重启网关容器吗？')) return;
+            try {
+                const res = await fetch('/api/system/restart', {method: 'POST'});
+                const data = await res.json();
+                alert(data.message || '指令已下发');
+                setTimeout(loadOverview, 3000);
+            } catch (e) {
+                alert('网络错误');
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/logout', {method: 'POST'});
+            location.href = '/login';
+        }
+
+        function openOAuthModal() {
+            document.getElementById('oauthModal').style.display = 'flex';
+            document.getElementById('oauthLoading').style.display = 'none';
+            document.getElementById('oauthAction').style.display = 'block';
+        }
+
+        function closeOAuthModal() {
+            if (pollTimer) clearInterval(pollTimer);
+            document.getElementById('oauthModal').style.display = 'none';
+        }
+
+        async function startOAuthFlow() {
+            const loading = document.getElementById('oauthLoading');
+            const action = document.getElementById('oauthAction');
+            const statusText = document.getElementById('oauthStatusText');
+            loading.style.display = 'block';
+            action.style.display = 'none';
+            statusText.textContent = '正在向 CodeBuddy 请求 OAuth 设备授权链接...';
+
+            try {
+                const res = await fetch('/api/oauth/start', {method: 'POST'});
+                const data = await res.json();
+                if (!res.ok || !data.authUrl) {
+                    alert('生成授权链接失败: ' + (data.error || ''));
+                    closeOAuthModal();
+                    return;
+                }
+
+                window.open(data.authUrl, '_blank');
+                statusText.textContent = '已打开授权页面，正在等待登录完成并自动轮询凭证...';
+
+                if (pollTimer) clearInterval(pollTimer);
+                let attempts = 0;
+                pollTimer = setInterval(async () => {
+                    attempts++;
+                    if (attempts > 60) {
+                        clearInterval(pollTimer);
+                        alert('授权轮询超时，请重试');
+                        closeOAuthModal();
+                        return;
+                    }
+                    try {
+                        const pollRes = await fetch('/api/oauth/poll', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({state: data.state})
+                        });
+                        const pollData = await pollRes.json();
+                        if (pollData.status === 'success') {
+                            clearInterval(pollTimer);
+                            alert(`🎉 恭喜！账号 [${pollData.nickname}] 授权成功，已加入账号池！`);
+                            closeOAuthModal();
+                            loadOverview();
+        loadDailyReport();
+                        }
+                    } catch (err) {
+                        console.error(err);
+                    }
+                }, 3000);
+
+            } catch (e) {
+                alert('请求失败: ' + e);
+                closeOAuthModal();
+            }
+        }
+
+        async function runChatTest() {
+            const model = document.getElementById('testModel').value;
+            const msg = document.getElementById('testPrompt').value.trim();
+            const out = document.getElementById('testOutput');
+            const btn = document.getElementById('btnTest');
+            if (!msg) return;
+
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            out.textContent = '正在向网关发起对话调用...';
+
+            try {
+                const res = await fetch('/api/chat/test', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model, message: msg})
+                });
+                const data = await res.json();
+                if (res.ok && data.choices && data.choices[0]) {
+                    out.textContent = `[${model}] 回复：\n\n` + data.choices[0].message.content;
+                } else {
+                    out.textContent = '调用失败:\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (e) {
+                out.textContent = '请求异常: ' + e;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 发送测试调用';
+                loadOverview();
+        loadDailyReport();
+            }
+        }
+
+        loadOverview();
+        loadDailyReport();
+        setInterval(loadOverview, 15000);
+    </script>
+</body>
+</html>

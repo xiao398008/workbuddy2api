@@ -14,8 +14,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -42,6 +44,7 @@ type Config struct {
 	AuthDir    string `json:"auth_dir"`
 	ConfigFile string `json:"config_file"`
 	WB2AUrl    string `json:"wb2a_url"`
+	DailyDir   string `json:"daily_dir"`
 }
 
 var (
@@ -328,9 +331,24 @@ func main() {
 		AuthDir:    "/opt/workbuddy2api/auths",
 		ConfigFile: "/opt/workbuddy2api/config.json",
 		WB2AUrl:    "http://127.0.0.1:7863",
+		DailyDir:   "/opt/workbuddy-daily",
 	}
 	if envKey := os.Getenv("ADMIN_KEY"); envKey != "" {
 		cfg.AdminKey = envKey
+	}
+	if envDir := os.Getenv("DAILY_DIR"); envDir != "" {
+		cfg.DailyDir = envDir
+	}
+
+	if envApi := os.Getenv("API_KEY"); envApi != "" {
+		cfg.APIKey = envApi
+	} else if raw, err := os.ReadFile(cfg.ConfigFile); err == nil {
+		var c struct {
+			ApiKey string `json:"api_key"`
+		}
+		if json.Unmarshal(raw, &c) == nil && c.ApiKey != "" {
+			cfg.APIKey = c.ApiKey
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -908,8 +926,22 @@ func main() {
 				continue
 			}
 
-			dateStr := time.Now().Format("2006-01-02")
-			if len(line) >= 10 && line[4] == '-' && line[7] == '-' {
+			dateStr := time.Now().In(time.Local).Format("2006-01-02")
+			// 支持标准 RFC3339 / Docker 纳秒时间戳并按服务器本地时区转换为日期
+			if len(line) >= 20 && line[4] == '-' && line[7] == '-' && strings.Contains(line[:35], "Z") {
+				tsEnd := strings.Index(line[:35], " ")
+				if tsEnd == -1 {
+					tsEnd = strings.Index(line[:35], "|")
+				}
+				if tsEnd > 19 {
+					rawTs := strings.TrimSpace(line[:tsEnd])
+					if t, err := time.Parse(time.RFC3339Nano, rawTs); err == nil {
+						dateStr = t.In(time.Local).Format("2006-01-02")
+					} else if t, err := time.Parse(time.RFC3339, rawTs); err == nil {
+						dateStr = t.In(time.Local).Format("2006-01-02")
+					}
+				}
+			} else if len(line) >= 10 && line[4] == '-' && line[7] == '-' {
 				dateStr = line[:10]
 			}
 
@@ -1073,6 +1105,136 @@ func main() {
 			},
 			"log_credit_total": logCreditTotal,
 		})
+	}))
+
+	// API: 每日任务（WorkBuddy-Daily 执行器）状态与结果
+	mux.HandleFunc("GET /api/daily-tasks", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		statusPath := filepath.Join(cfg.DailyDir, "status.json")
+		raw, err := os.ReadFile(statusPath)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{
+				"running":   false,
+				"never_run": true,
+				"message":   "尚未执行过每日任务",
+				"accounts":  []any{},
+			})
+			return
+		}
+		var st map[string]any
+		if err := json.Unmarshal(raw, &st); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "解析 status.json 失败: " + err.Error()})
+			return
+		}
+
+		// 进程存活校验：runner 被强杀后 status 可能残留 running=true
+		if running, _ := st["running"].(bool); running {
+			if pidF, ok := st["pid"].(float64); ok && pidF > 0 {
+				if _, serr := os.Stat(fmt.Sprintf("/proc/%d", int(pidF))); serr != nil {
+					st["running"] = false
+					st["stale"] = true
+				}
+			}
+		}
+
+		// 附加账号昵称（auths uid → nickname）
+		nickMap := map[string]string{}
+		if files, gerr := filepath.Glob(filepath.Join(cfg.AuthDir, "workbuddy-*.json")); gerr == nil {
+			for _, f := range files {
+				var af authFile
+				if rawA, aerr := os.ReadFile(f); aerr == nil && json.Unmarshal(rawA, &af) == nil && af.Account.UID != "" {
+					nick := af.Account.Nickname
+					if nick == "" {
+						nick = af.Account.UID[:8]
+					}
+					nickMap[af.Account.UID] = nick
+				}
+			}
+		}
+		if accs, ok := st["accounts"].([]any); ok {
+			for _, a := range accs {
+				if am, ok := a.(map[string]any); ok {
+					if uid, ok := am["uid"].(string); ok && uid != "" {
+						if nick, exists := nickMap[uid]; exists {
+							am["nickname"] = nick
+						}
+					}
+				}
+			}
+		}
+		writeJSON(w, 200, st)
+	}))
+
+	// API: 手动触发每日任务（后台异步执行）
+	mux.HandleFunc("POST /api/daily-tasks/run", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Only int `json:"only"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		script := filepath.Join(cfg.DailyDir, "run_daily.py")
+		if _, err := os.Stat(script); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "未找到 run_daily.py: " + err.Error()})
+			return
+		}
+
+		// 防重复触发：检查 status.json 中记录的进程是否仍在运行
+		if rawS, errS := os.ReadFile(filepath.Join(cfg.DailyDir, "status.json")); errS == nil {
+			var prev map[string]any
+			if json.Unmarshal(rawS, &prev) == nil {
+				if running, _ := prev["running"].(bool); running {
+					if pidF, ok := prev["pid"].(float64); ok && pidF > 0 {
+						if _, serr := os.Stat(fmt.Sprintf("/proc/%d", int(pidF))); serr == nil {
+							writeJSON(w, 409, map[string]any{"error": fmt.Sprintf("已有每日任务在运行中 (pid %d)", int(pidF))})
+							return
+						}
+					}
+				}
+			}
+		}
+
+		args := []string{script, "--mode", "manual"}
+		if req.Only > 0 {
+			args = append(args, "--only", fmt.Sprintf("%d", req.Only))
+		}
+		cmd := exec.Command("python3", args...)
+		cmd.Dir = cfg.DailyDir
+		cmd.Env = append(os.Environ(), "TZ=Asia/Shanghai")
+		_ = os.MkdirAll(filepath.Join(cfg.DailyDir, "logs"), 0755)
+		spawnLog, _ := os.OpenFile(filepath.Join(cfg.DailyDir, "logs", "spawn.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if spawnLog != nil {
+			cmd.Stdout = spawnLog
+			cmd.Stderr = spawnLog
+		}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		if err := cmd.Start(); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "启动失败: " + err.Error()})
+			return
+		}
+		go func() { _ = cmd.Wait() }()
+		writeJSON(w, 200, map[string]any{"ok": true, "message": "每日任务已在后台启动", "pid": cmd.Process.Pid})
+	}))
+
+	// API: 每日任务执行日志（供前端轮询实时显示）
+	mux.HandleFunc("GET /api/daily-tasks/logs", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		tail := 400
+		if t := r.URL.Query().Get("tail"); t != "" {
+			if n, err := strconv.Atoi(t); err == nil && n > 0 && n <= 3000 {
+				tail = n
+			}
+		}
+		logPath := filepath.Join(cfg.DailyDir, "logs", "run.log")
+		f, err := os.Open(logPath)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{"logs": "", "message": "暂无运行日志（尚未执行过每日任务）"})
+			return
+		}
+		defer f.Close()
+		content, _ := io.ReadAll(io.LimitReader(f, 4<<20))
+		lines := strings.Split(string(content), "\n")
+		if len(lines) > tail {
+			lines = lines[len(lines)-tail:]
+		}
+		writeJSON(w, 200, map[string]any{"logs": strings.Join(lines, "\n")})
 	}))
 
 	log.Printf("WorkBuddy UI v2 starting on %s", cfg.Listen)

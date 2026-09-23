@@ -313,6 +313,7 @@
         <!-- 导航选项卡 -->
         <div class="tabs-nav">
             <button class="tab-btn active" onclick="switchTab('overview')">📊 概览与账号池</button>
+            <button class="tab-btn" onclick="switchTab('daily')">🌱 每日任务</button>
             <button class="tab-btn" onclick="switchTab('policy')">⚙️ 调度策略与参数</button>
             <button class="tab-btn" onclick="switchTab('logs')">📜 实时请求审计日志</button>
             <button class="tab-btn" onclick="switchTab('test')">🧪 在线调试与模型清单</button>
@@ -367,9 +368,9 @@
                             <span class="stat-desc" id="todayCacheTokens">命中 Tokens: --</span>
                         </div>
                         <div class="stat-card" style="background: rgba(255,255,255,0.02);">
-                            <span class="stat-label">官方实际扣减积分 (全池累计)</span>
+                            <span class="stat-label">今日精确扣减积分 (网关计量)</span>
                             <span class="stat-val" id="todayCostCredits" style="color: #f59e0b;">--</span>
-                            <span class="stat-desc" id="todayCostCreditsDesc">来自官方计费接口 · 与账号卡片同口径</span>
+                            <span class="stat-desc" id="todayCostCreditsDesc">全池历史官方已用: --</span>
                         </div>
                         <div class="stat-card" style="background: rgba(255,255,255,0.02);">
                             <span class="stat-label">今日平均吞吐 / 响应</span>
@@ -425,7 +426,74 @@
             </div>
         </div>
 
-        <!-- TAB 2: 调度策略与参数配置 -->
+        <!-- TAB 2: 每日任务（WorkBuddy 成长中心/开学季/小程序） -->
+        <div id="tab-daily" class="tab-pane">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">🌱 每日任务执行状态（WorkBuddy 成长中心 + 开学季 + 小程序）</span>
+                    <div class="flex">
+                        <span id="dailySchedHint" style="font-size: 0.8rem; color: var(--text-muted);">定时: 每日 07:30 全流程 · 23:30 夜猫子窗口</span>
+                        <button class="btn btn-sm" onclick="loadDailyTasks()">🔄 刷新</button>
+                        <button class="btn btn-sm btn-primary" id="btnDailyRun" onclick="runDailyTasks()">▶️ 立即执行全流程</button>
+                    </div>
+                </div>
+                <div style="padding: 1.25rem 1.5rem 0.5rem;">
+                    <div class="stats-grid" style="margin-bottom: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">执行状态</span>
+                            <span class="stat-val" id="dailyState" style="font-size: 1.3rem;">--</span>
+                            <span class="stat-desc" id="dailyStateDesc">--</span>
+                        </div>
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">最近完成时间</span>
+                            <span class="stat-val" id="dailyFinished" style="font-size: 1.1rem;">--</span>
+                            <span class="stat-desc" id="dailyDuration">--</span>
+                        </div>
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">任务完成度 (全账号)</span>
+                            <span class="stat-val" id="dailyProgress" style="color: #10b981;">--</span>
+                            <span class="stat-desc" id="dailyProgressDesc">--</span>
+                        </div>
+                        <div class="stat-card" style="background: rgba(255,255,255,0.02);">
+                            <span class="stat-label">本模式</span>
+                            <span class="stat-val" id="dailyMode" style="font-size: 1.3rem;">--</span>
+                            <span class="stat-desc">morning=全流程 · night=夜猫窗口 · manual=手动</span>
+                        </div>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>账号</th>
+                            <th>UID</th>
+                            <th>积分</th>
+                            <th>用量</th>
+                            <th>成长 (等级/连签/能量)</th>
+                            <th>任务进度</th>
+                            <th>未完成项</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyTable">
+                        <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">正在加载每日任务状态...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">📜 每日任务执行日志（实时）</span>
+                    <div class="flex">
+                        <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem;">
+                            <input type="checkbox" id="autoScrollDailyLogs" checked> 自动滚动
+                        </label>
+                        <button class="btn btn-sm" onclick="fetchDailyLogs()">🔄 刷新日志</button>
+                    </div>
+                </div>
+                <div class="log-container" id="dailyLogBox" style="height: 380px;">正在加载每日任务日志...</div>
+            </div>
+        </div>
+
+        <!-- TAB 3: 调度策略与参数配置 -->
         <div id="tab-policy" class="tab-pane">
             <div class="panel">
                 <div class="panel-header">
@@ -498,7 +566,7 @@
             </div>
         </div>
 
-        <!-- TAB 3: 实时请求审计日志 -->
+        <!-- TAB 4: 实时请求审计日志 -->
         <div id="tab-logs" class="tab-pane">
             <div class="panel">
                 <div class="panel-header">
@@ -514,7 +582,7 @@
             </div>
         </div>
 
-        <!-- TAB 4: 在线调试与模型清单 -->
+        <!-- TAB 5: 在线调试与模型清单 -->
         <div id="tab-test" class="tab-pane">
             <div class="panel">
                 <div class="panel-header">
@@ -591,6 +659,7 @@
         let pollTimer = null;
         let logInterval = null;
         let modelsInterval = null;
+        let dailyInterval = null;
 
         function switchTab(name) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -602,6 +671,13 @@
                 if (!logInterval) logInterval = setInterval(fetchLogs, 4000);
             } else {
                 if (logInterval) { clearInterval(logInterval); logInterval = null; }
+            }
+            if (name === 'daily') {
+                loadDailyTasks();
+                fetchDailyLogs();
+                if (!dailyInterval) dailyInterval = setInterval(() => { loadDailyTasks(); fetchDailyLogs(); }, 5000);
+            } else {
+                if (dailyInterval) { clearInterval(dailyInterval); dailyInterval = null; }
             }
             if (name === 'test') {
                 loadModels(true);
@@ -644,11 +720,14 @@
             document.getElementById('todayCacheRate').textContent = today.cache_rate || '0.0%';
             document.getElementById('todayCacheTokens').textContent = `命中: ${(today.hit_tokens||0).toLocaleString()} tok`;
             const off = data.official || {};
-            const logCredit = data.log_credit_total || 0;
-            document.getElementById('todayCostCredits').textContent = ((off.used !== undefined && off.used !== null) ? off.used : '--') + ' 点';
+            const todayCost = (today.cost_credits !== undefined && today.cost_credits !== null) ? today.cost_credits : 0;
+            document.getElementById('todayCostCredits').textContent = todayCost + ' 点';
             if (off.used !== undefined) {
                 document.getElementById('todayCostCreditsDesc').textContent =
-                    `官方已用 ${off.used} / 总额 ${off.size} · 网关 credit 累计 ${logCredit.toFixed(2)}`;
+                    `全池历史官方已用: ${off.used} / ${off.size} 点 (网关历史累计 ${(data.log_credit_total || 0).toFixed(2)} 点)`;
+            } else {
+                document.getElementById('todayCostCreditsDesc').textContent =
+                    `网关历史累计 ${(data.log_credit_total || 0).toFixed(2)} 点`;
             }
             document.getElementById('todaySpeed').textContent = (today.avg_speed || 0) + ' tok/s';
             document.getElementById('todayAvgTtfb').textContent = `平均首字延迟: ${today.avg_ttfb || '-'}ms`;
@@ -682,6 +761,111 @@
                 `;
             });
             tbody.innerHTML = html;
+        }
+
+        async function loadDailyTasks() {
+            try {
+                const res = await fetch('/api/daily-tasks');
+                if (res.status === 401) { location.href = '/login'; return; }
+                const data = await res.json();
+                renderDailyTasks(data);
+            } catch (e) {
+                console.error('加载每日任务状态失败:', e);
+            }
+        }
+
+        function renderDailyTasks(data) {
+            const stEl = document.getElementById('dailyState');
+            const descEl = document.getElementById('dailyStateDesc');
+            const btn = document.getElementById('btnDailyRun');
+
+            if (data.never_run) {
+                stEl.textContent = '尚未执行';
+                stEl.style.color = 'var(--text-muted)';
+                descEl.textContent = data.message || '等待定时任务首次运行';
+            } else if (data.running) {
+                stEl.textContent = '🔄 运行中...';
+                stEl.style.color = '#38bdf8';
+                descEl.textContent = `开始于 ${data.started_at || '--'}（pid ${data.pid || '-'}）`;
+            } else if (data.exit_code === 0) {
+                stEl.textContent = '✅ 上次执行成功';
+                stEl.style.color = '#10b981';
+                descEl.textContent = data.stale ? '注：进程已不存在（可能被中断）' : '全部任务已执行完毕';
+            } else {
+                stEl.textContent = '⚠️ 上次执行异常';
+                stEl.style.color = '#f59e0b';
+                descEl.textContent = `退出码 ${data.exit_code}${data.error ? ' · ' + data.error : ''}`;
+            }
+
+            document.getElementById('dailyFinished').textContent = data.finished_at || '--';
+            const dur = data.duration_sec;
+            document.getElementById('dailyDuration').textContent = dur ? `耗时 ${Math.floor(dur / 60)}m ${dur % 60}s` : (data.running ? '执行中...' : '--');
+            document.getElementById('dailyMode').textContent = data.mode || '--';
+
+            const accs = data.accounts || [];
+            let sumDone = 0, sumTotal = 0;
+            accs.forEach(a => { sumDone += (a.done || 0); sumTotal += (a.total || 0); });
+            document.getElementById('dailyProgress').textContent = sumTotal > 0 ? `${sumDone} / ${sumTotal}` : '--';
+            document.getElementById('dailyProgressDesc').textContent = `共 ${accs.length} 个账号`;
+
+            const tbody = document.getElementById('dailyTable');
+            if (accs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">暂无执行记录</td></tr>';
+            } else {
+                let html = '';
+                accs.forEach(a => {
+                    const name = escapeHtml(a.nickname || a.note || '账号');
+                    const uid = escapeHtml(a.uid || '--');
+                    const done = a.done || 0, total = a.total || 0;
+                    const pct = total > 0 ? Math.round(done * 100 / total) : 0;
+                    const badge = pct >= 100 ? 'success' : (pct > 0 ? 'info' : 'warning');
+                    const rest = (a.rest && a.rest.length) ? a.rest.map(x => `<span class="badge badge-warning" style="margin:0.15rem;">${escapeHtml(x)}</span>`).join('') : '<span class="badge badge-success">全部完成</span>';
+                    html += `
+                    <tr>
+                        <td><strong>${name}</strong></td>
+                        <td style="font-family:monospace;font-size:0.8rem;color:var(--text-muted);">${uid.substring(0, 8)}</td>
+                        <td>${escapeHtml(a.credits || '--')}</td>
+                        <td>${escapeHtml(a.usage || '--')}</td>
+                        <td>${escapeHtml(a.growth || '--')}</td>
+                        <td><span class="badge badge-${badge}">${done} / ${total}</span>
+                            <div class="progress-bar-wrap"><div class="progress-fill" style="width:${pct}%;"></div></div>
+                        </td>
+                        <td>${rest}</td>
+                    </tr>`;
+                });
+                tbody.innerHTML = html;
+            }
+        }
+
+        async function runDailyTasks() {
+            if (!confirm('确定立即在后台执行一轮完整每日任务？\n（成长中心 17 项 + 开学季 + 小程序 + 8 项玩法，预计 5~20 分钟）')) return;
+            const btn = document.getElementById('btnDailyRun');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/daily-tasks/run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+                const data = await res.json();
+                alert(data.message || data.error || '已触发');
+                setTimeout(() => { loadDailyTasks(); fetchDailyLogs(); }, 2500);
+            } catch (e) {
+                alert('触发失败: ' + e);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function fetchDailyLogs() {
+            try {
+                const res = await fetch('/api/daily-tasks/logs');
+                if (!res.ok) return;
+                const data = await res.json();
+                const box = document.getElementById('dailyLogBox');
+                box.textContent = data.logs || (data.message || '暂无日志');
+                if (document.getElementById('autoScrollDailyLogs') && document.getElementById('autoScrollDailyLogs').checked) {
+                    box.scrollTop = box.scrollHeight;
+                }
+            } catch (e) {
+                console.error('加载每日任务日志失败:', e);
+            }
         }
 
         function renderOverview(data) {

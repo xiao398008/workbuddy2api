@@ -148,7 +148,7 @@ func TestLogChatRowFormat(t *testing.T) {
 		})
 	})
 	for _, want := range []string{
-		"| #", "deepseek-v4", "| stream |", "| 200 |", "uid=00e26541", "TTFB=412ms",
+		"| #", "deepseek-v4", "| stream |", "| 200 |", "uid=xxxxxxxx", "TTFB=412ms",
 		"in=1000", "out=1234", "hit=800", "hit_rate=80.0%", "cr=0.42", "tok/s |", "total=",
 	} {
 		if !strings.Contains(out, want) {

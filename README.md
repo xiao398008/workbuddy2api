@@ -389,7 +389,7 @@ ADMIN_KEY="your-admin-password" ./workbuddy-web   # 默认监听 127.0.0.1:7864
 | `/api/daily-tasks/run` | POST | 后台异步触发 `run_daily.py --mode manual`；body 可传 `{"only": 1}` 指定单账号 |
 | `/api/daily-tasks/logs` | GET | 运行日志尾部（`?tail=` 默认 400，上限 3000 行） |
 
-> 执行器 `run_daily.py` 及任务脚本由部署方自行提供并放入 `DAILY_DIR`（默认 `/opt/workbuddy-daily`，**本仓库不含任务脚本**）；尚无执行记录时面板显示「尚未执行过每日任务」。常见用法：由系统 cron 定时执行，面板负责可视化与手动补跑。
+> 执行器与任务脚本已在仓库 [daily/](daily/README.md) 目录提供（`run_daily.py` + 上游 WorkBuddy-Daily 任务脚本，MIT）：部署到 `DAILY_DIR`（默认 `/opt/workbuddy-daily`）后，由系统 cron 定时执行（07:30 / 23:30），或在面板中一键触发并实时查看日志；尚无执行记录时面板显示「尚未执行过每日任务」。
 
 ## 🛠️ 开发
 
@@ -420,6 +420,7 @@ internal/
   upstream/  # 上游封装（chat/billing/auth/headers/sse/payload/sanitize/idle）
   redisstore/# Upstash 持久化 + Noop 降级
 web/       # 管理面板（单文件 Go，内嵌 HTML）
+daily/     # 每日任务执行器 + WorkBuddy-Daily 任务脚本（Python，可选部署）
 ```
 
 ## 免责声明

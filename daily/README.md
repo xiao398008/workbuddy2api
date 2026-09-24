@@ -9,7 +9,7 @@ WorkBuddy 成长中心 / 开学季 / 小程序等每日任务的自动化组件�
 | 文件 | 说明 |
 |---|---|
 | `run_daily.py` | 执行器（本仓库维护）：从网关 auths 重建 AT → 调用任务脚本 → 解析输出写 `status.json` / `logs/` |
-| `workbuddy_daily.py` | 任务脚本：上游 [L0NE-6/WorkBuddy-Daily](https://github.com/L0NE-6/WorkBuddy-Daily) @ `9c531f9`，MIT，原样引入 |
+| `workbuddy_daily.py` | 任务脚本：上游 [L0NE-6/WorkBuddy-Daily](https://github.com/L0NE-6/WorkBuddy-Daily) @ `18eab699`，MIT，原样引入 |
 | `workbuddy_login.py` | 上游配套的登录 / 取 token 工具（同版本） |
 | `requirements.txt` | Python 依赖（仅 `requests`，Python 3.8+） |
 | `LICENSE.workbuddy-daily` | 上游 MIT 许可（版权归 L0NE-6，按许可要求保留） |
@@ -56,4 +56,12 @@ python3 run_daily.py --mode manual --only 1    # 仅第 1 个账号；其余参�
 ./sync-upstream.sh --apply   # 应用更新（自动备份旧文件；建议替换后先试跑再上生产）
 ```
 
-> 上游项目仍在活跃更新；本仓库按已验证版本 `9c531f9` 固定引入。升级后请先在测试目录验证，再替换生产文件。
+> 上游项目仍在活跃更新；本仓库按已验证版本固定引入。升级后请先在测试目录验证，再替换生产文件。
+
+## 版本记录
+
+| 上游版本 | 说明 |
+|---|---|
+| `18eab699` | 当前固定版本（2026-09-24 生产验证通过）：首次 Buddy 前置自动补救、小程序链式任务 Sequential_Tasks_3~7、企业微信机器人推送（WECOM_WEBHOOK）等 |
+| `9c531f9` | 初始引入版本 |
+

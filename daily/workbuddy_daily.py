@@ -13,11 +13,11 @@
    🔐 Token 永续     只配一个刷新令牌变量，脚本自动续期（90 天滚动，永不过期）
    ✅ 成长任务       18 项云端/桌面全覆盖 + 轻量云专家（仅公益专家需真实捐款）
    🏫 开学季活动     分享/对话/桌面对话/专家 + 幸运大转盘（含瑞幸/KFC/酷狗实物券）
-   📱 小程序任务     3 项：校园日 + 小程序对话 + 小程序专家对话（共 +400c+15e）
+   📱 小程序任务     8 项：Tasks_1~7 链式任务 + 校园日（已验证 +800c+20e，每日零点解锁一环）
    🎮 8 项互动玩法   抽奖、盲盒、Buddy、派猫猫旅行、连签兑换、补签卡、礼包补偿、徽章
    💰 三类查询       积分套餐（剩余/总量/已用）、用量统计、成长数据（等级/连签/能量）
    🎁 自动领奖       扫描全部已完成任务自动领取；completed 未领的自动补领
-   📢 双渠道推送     PushPlus（微信）+ Bark（iOS），可同时配置互不影响
+   📢 三渠道推送     PushPlus（微信）+ Bark（iOS）+ 企业微信机器人，可同时配置
    🧩 幂等安全       重复运行只补缺口，不会重复领取或重复操作
    🔄 API 重试       网络/5xx 自动指数退避重试，写动作间隔可调（--gap）
    🔗 稳定指纹       每账号 md5 派生固定 machineId，桌面/web/小程序三域对齐官方埋点
@@ -43,6 +43,7 @@
    WORKBUDDY_REFRESH_TOKEN   【必填】多账号刷新令牌，换行分隔
    PUSHPLUS_TOKEN            【可选】PushPlus 推送（微信）
    BARK_URL                  【可选】Bark 推送（iOS），如 https://api.day.app/xxxxxxxx
+   WECOM_WEBHOOK             【可选】企业微信群机器人（完整 URL 或仅 key）
 
 获取变量值（首次必看）
    第一步：在电脑上安装并登录 WorkBuddy 桌面端
@@ -73,10 +74,16 @@
       分享活动给好友 · 与AI对话3次 · 桌面端对话1次 · 召唤开学季专家
       ❌ 学生认证（需微信实名，人工环节）
       🎰 幸运大转盘：抽到余额为 0（积分 6/66 + 瑞幸/KFC/酷狗实物券）
-   📱 小程序成长任务（3 项，需 X-Client-Platform: miniprogram 头）
-      Sequential_Tasks_1 小程序对话（+100c+5e）
-      Sequential_Tasks_2 小程序专家对话（+200c+5e）
+   📱 小程序成长任务（8 项，需 X-Client-Platform: miniprogram 头）
+      Sequential_Tasks_1 完成 1 次对话（+100c+5e）
+      Sequential_Tasks_2 选中专家并完成对话（+200c+5e）
+      Sequential_Tasks_3 完成 5 次对话（+300c+5e）
+      Sequential_Tasks_4 创建 1 个定时任务（+100c+5e）
+      Sequential_Tasks_5 使用 1 次 GLM5.2（+100c+5e）
+      Sequential_Tasks_6 完成 10 次对话
+      Sequential_Tasks_7 体验灵感功能
       school_season 校园日（+100c+5e）
+      ※ Tasks_1~7 为链式任务，完成一环后次日零点解锁下一环（脚本自动推进）
    🎮 互动玩法（8 项）
       抽奖 · 盲盒 · Buddy信息 · 派猫猫旅行 · 连签兑换 · 补签卡 · 礼包补偿 · 徽章
 
@@ -86,6 +93,7 @@
    · 桌面任务：Windows 走真实桌面换血；非 Windows 自动降级为指纹上报（无需真实桌面端）
    · 夜猫子：官方规则为「每日 1 次 × 累计 3 天」，有响应即停，不空跑
    · accept 校验：解析接口逐任务状态 + 回读验证，未落账的自动逐个重试
+   · 前置依赖：accept 报 prerequisite not met 时先补跑前置任务（如先领养首只 Buddy）再重试
    · 微信关注任务：需真人扫码关注满 24 小时，脚本识别并提示，不自动完成
    · 数据文件：wb_refresh_tokens.json 自动生成与维护，无需手动管理
    · 新增账号：变量值末尾追加一行 "手机号:AT:RT" 即可，下次运行自动并入
@@ -95,7 +103,7 @@
 🔒 隐私说明
    脚本不含任何账号、手机号、Token 或设备信息，所有凭据均由环境变量注入。
 """
-import sys, os, json, time, uuid, base64, glob, hashlib, glob as _glob, shutil, subprocess, threading, queue
+import sys, os, re, json, time, uuid, base64, glob, hashlib, glob as _glob, shutil, subprocess, threading, queue
 import requests
 
 
@@ -139,6 +147,11 @@ TASK_NAME_CN = {
     "wb_wechat_oa_subscribe_task": "关注公众号",
     "Sequential_Tasks_1": "小程序对话",
     "Sequential_Tasks_2": "小程序专家对话",
+    "Sequential_Tasks_3": "小程序对话5次",
+    "Sequential_Tasks_4": "小程序定时任务",
+    "Sequential_Tasks_5": "小程序GLM5.2",
+    "Sequential_Tasks_6": "小程序对话10次",
+    "Sequential_Tasks_7": "小程序灵感功能",
     "school_season": "校园日活动",
 }
 
@@ -687,11 +700,13 @@ def t_sign(s, uid, nick, log):
 
 
 def t_accept_all(s, uid, nick, log):
-    """接受全部未接受任务：批量 accept → 解析逐项结果 → 未落账的逐个重试。
+    """接受全部未接受任务：批量 accept → 解析逐项结果 → 前置依赖补救 → 未落账逐个重试。
 
     ⚠️ accept 响应是**逐任务**返回状态：
         {"code":0, "data":{"results":[{"task_code":..,"status":"accepted"|"error","message":..}]}}
     顶层 code=0 只代表请求送达，不代表每项都登记成功（实测存在整体 error 的形态）。
+    ⚠️ 部分任务带前置条件：message 为 `prerequisite not met: <task_code>`（如 first_buddy
+       表示该账号还没有 Buddy 实例），此时先补跑前置任务再重试登记。
     """
     r = s.get(BASE + "/v2/activity/growth/tasks", timeout=25, verify=False).json()
     todo = [t.get("task_code") for t in r.get("data", {}).get("tasks", [])
@@ -700,13 +715,14 @@ def t_accept_all(s, uid, nick, log):
         return
     # ---- 1) 批量接受 + 解析逐项结果 ----
     resp = {}
+    bad = []
     try:
         r2 = s.post(BASE + "/v2/activity/growth/tasks/accept",
                     json={"task_codes": todo}, timeout=20, verify=False)
         d2 = r2.json()
         for x in ((d2.get("data") or {}).get("results") or []):
             if isinstance(x, dict) and x.get("task_code"):
-                resp[x["task_code"]] = (x.get("status") or "", (x.get("message") or "")[:50])
+                resp[x["task_code"]] = (x.get("status") or "", x.get("message") or "")
         ok = [c for c in todo if resp.get(c, ("", ""))[0] == "accepted"]
         bad = [(c, resp[c][0], resp[c][1]) for c in todo if c in resp and resp[c][0] != "accepted"]
         nolog = [c for c in todo if c not in resp]
@@ -714,11 +730,26 @@ def t_accept_all(s, uid, nick, log):
             len(todo), len(ok), len(bad) + len(nolog),
             ("（%d 项无返回）" % len(nolog)) if nolog else ""))
         for c, st, m in bad[:6]:
-            log("      ✗ %s: %s %s" % (c, st, m))
+            log("      ✗ %s: %s %s" % (c, st, m[:70]))
         if len(bad) > 6:
             log("      ...另 %d 项" % (len(bad) - 6))
     except Exception as e:
         log("   📋批量接受异常: %s" % str(e)[:60])
+    # ---- 1.5) 前置依赖补救：message 形如 "prerequisite not met: first_buddy (...)" ----
+    need = {}
+    for c, st, m in bad:
+        if "prerequisite not met:" in m:
+            pcode = m.split("prerequisite not met:", 1)[1].strip().split(" ")[0].strip("()[]")
+            need.setdefault(pcode, []).append(c)
+    for pcode, ptasks in need.items():
+        log("   🧩 %d 项待前置「%s」满足: %s" % (len(ptasks), pcode, ",".join(ptasks[:6])))
+        if pcode == "first_buddy":
+            if ensure_first_buddy(s, uid, nick, log):
+                log("      ✅ Buddy 已就绪，进入重试登记")
+            else:
+                log("      ⚠️ 服务端仍无 Buddy 实例：该账号需先在桌面端/小程序完成一次领养引导，本次 %d 项保持未登记" % len(ptasks))
+        else:
+            log("      ⚠️ 前置「%s」脚本暂无法自动完成" % pcode)
     # ---- 2) 回读验证 + 逐个重试（上游存在 200+OK 但未落账的形态）----
     time.sleep(2)
     pending = [c for c in todo if prog(s, c)[0] in (None, "not_accepted")]
@@ -844,6 +875,7 @@ def t_chat_n(s, uid, nick, log, code, n, prompts):
 def t_black_cat(s, uid, nick, log):
     st, cur, tgt = prog(s, "black_cat")
     if st in ("completed", "claimed"):
+        log("   夜猫子: 已 %s %s/%s" % (st, cur, tgt))
         return
     if not within_night_window():
         # 显式用北京时间：GitHub Actions runner 是 UTC，localtime() 会误导排查
@@ -1486,11 +1518,33 @@ def t_makeup(s, uid, nick, log):
         log("   🩹补签检查异常: %s" % str(e)[:50])
 
 
-def t_first_buddy(s, uid, nick, log):
-    """新账号：领取第一只Buddy"""
-    st, cur, tgt = prog(s, "first_buddy")
-    if st in ("completed", "claimed"):
-        return
+def has_buddy(s):
+    """服务端是否已存在 Buddy 实例（旅行 / 其他任务 accept 的真实前置判据）。
+
+    返回 True / False / None（None = 查询失败，状态未知）。
+    """
+    try:
+        v = s.get(BASE + "/v2/activity/growth/buddy/visible", timeout=20, verify=False).json()
+        d = v.get("data") or {}
+        if "has_buddy" in d:
+            return bool(d.get("has_buddy"))
+        info = s.get(BASE + "/v2/activity/growth/buddy/info", timeout=20, verify=False).json()
+        return bool((info.get("data") or {}).get("buddy"))
+    except Exception:
+        return None
+
+
+def ensure_first_buddy(s, uid, nick, log):
+    """确保账号有 Buddy 实例 —— 其余任务 accept 的前置条件。
+
+    服务端对无 Buddy 实例的账号会拒绝登记这些任务：
+        {"status": "error", "message": "prerequisite not met: first_buddy (no buddy instance)"}
+    真实判据是 /buddy/visible 的 has_buddy，而非 first_buddy 任务的 accept_status（任务可
+    已 claimed 但实例缺失）。链路：buddy_agreement_view 上报 → POST /buddy/agreement
+    → POST /buddy/first。返回 True 表示前置已满足。
+    """
+    if has_buddy(s) is True:
+        return True
     try:
         report(s, uid, nick, [{"eventCode": "buddy_agreement_view", "timestamp": int(time.time() * 1000)}])
         time.sleep(2)
@@ -1501,9 +1555,24 @@ def t_first_buddy(s, uid, nick, log):
         credit = (r.get("data") or {}).get("credit", 0)
         energy = (r.get("data") or {}).get("energy", 0)
         log("   🐱首只Buddy: %s (credit=+%s energy=+%s)" % (
-            "成功" if r.get("code") == 0 else str(r.get("msg", ""))[:40], credit, energy))
+            "领养成功" if r.get("code") == 0 else str(r.get("msg", ""))[:40], credit, energy))
+        time.sleep(2)
+        return has_buddy(s) is True
     except Exception as e:
         log("   🐱首只Buddy异常: %s" % str(e)[:40])
+        return False
+
+
+def t_first_buddy(s, uid, nick, log):
+    """领取第一只Buddy（在 t_accept_all 之前执行，满足其他任务的前置条件）"""
+    st, cur, tgt = prog(s, "first_buddy")
+    have = has_buddy(s)
+    if st in ("completed", "claimed") and have is not False:
+        log("   🐱首只Buddy: 已 %s %s/%s" % (st, cur, tgt))
+        return
+    if have is False and st in ("completed", "claimed"):
+        log("   🐱首只Buddy: 任务已 %s，但服务端无 Buddy 实例 → 尝试补建" % st)
+    ensure_first_buddy(s, uid, nick, log)
 
 
 def t_workstation(s, uid, nick, log, tok):
@@ -1646,6 +1715,44 @@ def mp_expert_use_events(uid, nick, expert_id, expert_name, conv_id, activity_id
     return evs
 
 
+def mp_model_chat_event(uid, nick, conv_id, model_id="glm-5.2", model_name="GLM-5.2"):
+    """Sequential_Tasks_5 判据：mini chat_request_send + 模型字段（上游 mpsrc 实测形状）。"""
+    ev = mp_chat_event(uid, nick, conv_id)
+    ev["requestModelId"] = model_id
+    ev["requestModelName"] = model_name
+    return ev
+
+
+def mp_playbook_events(uid, nick, case_id="01-ProductDesign", case_name="产品设计"):
+    """Sequential_Tasks_7 判据：mp 指纹 playbook_cta_click + playbook_prompt_send。"""
+    conv = "wb2api-mp-pb-" + str(uuid.uuid4())
+    base = {"id": case_id, "name": case_name, "type": "document",
+            "categoryId": "", "categoryName": "", "skills": "", "skillNames": ""}
+    cta = dict(base, eventCode="playbook_cta_click", source="discover", position=1, extVersion="2.2.8")
+    send = dict(base, eventCode="playbook_prompt_send", source="discover", promptLength=96,
+                isOfficial=1, conversationId=conv, extVersion="2.2.8")
+    return [cta, send]
+
+
+def mp_mini_expert_event(uid, nick, expert_id, expert_name):
+    """Sequential_Tasks_2 判据：mp 指纹 expert_actual_use（上游小程序源码实测形状）。
+
+    ⚠️ 与 school 域 expert 事件的区别（勿混用）：
+      · 不带 activityId / conversationId —— 真实小程序事件就是两者都没有
+      · extVersion 用小程序自身版本 2.2.8（school 段是 "SaaS"，另一口径）
+      · type 固定 "send_message"
+    上游实测：上报即 completed，claim 入账 200c+5e。
+    """
+    return {"eventCode": "expert_actual_use", "timestamp": int(time.time() * 1000),
+            "reportDelay": 0, "ideName": "wx_app_cloud", "ideType": "WorkBuddy_MP",
+            "extName": "workbuddy-mp", "extVersion": "2.2.8", "product": "SaaS",
+            "source": "mini_program", "os": "android", "osVersion": "14",
+            "arch": "arm64", "timezone": "Asia/Shanghai",
+            "machineId": mp_machine_id(uid), "userId": uid,
+            "id": expert_id, "name": expert_id, "expertTitle": expert_name,
+            "type": "send_message", "characterCount": 12, "expertType": "agent"}
+
+
 def mp_report(s, uid, nick, events):
     """以小程序指纹向 www.codebuddy.cn/v2/report 批量上报（上游 ReportMPEvent 同款）。"""
     base = mp_base(uid, nick)
@@ -1713,8 +1820,12 @@ def _mp_claim(s, code, log):
         return False
 
 
-def _mp_do_task(s, uid, nick, code, log, events_fn, label):
-    """小程序任务通用流程：mp 查询 → accept → 判据上报 → 回读 → claim。"""
+def _mp_do_task(s, uid, nick, code, log, events_fn, label, target=1):
+    """小程序任务通用流程：mp 查询 → accept → 判据上报 → 回读 → claim。
+
+    target：任务的进度目标（未 accept 时 progress 为 null，必须由调用方提供，
+    否则多元任务（如 Tasks_3 target=5）只会补 1 条）。
+    """
     st, cur, tgt = _mp_prog(s, code)
     if st is None:
         log("   %s: mp 口径未下发该任务，跳过" % label)
@@ -1730,10 +1841,19 @@ def _mp_do_task(s, uid, nick, code, log, events_fn, label):
             log("   %s: accept 失败，跳过" % label)
             return
         time.sleep(WRITE_GAP)
+    # 缺口计算：cur 可能为 None（未激活时 progress 全空）→ 用 target 兜底
+    cur = cur or 0
+    tgt = tgt or target
+    need = max(1, tgt - cur)
     try:
-        evs = events_fn()
-        st_code = mp_report(s, uid, nick, evs)
-        log("   %s: 判据已上报（HTTP %s，%d 个事件）" % (label, st_code, len(evs)))
+        sent = 0
+        for i in range(need):
+            evs = events_fn(i)
+            st_code = mp_report(s, uid, nick, evs)
+            sent += len(evs)
+            if i < need - 1:
+                time.sleep(WRITE_GAP)
+        log("   %s: 判据已上报（%d 次 / %d 个事件，目标 %s）" % (label, need, sent, tgt))
         time.sleep(2.5)
         st2, cur2, tgt2 = _mp_prog(s, code)
         if st2 in ("completed", "claimed"):
@@ -1746,30 +1866,109 @@ def _mp_do_task(s, uid, nick, code, log, events_fn, label):
         log("   %s: 失败 %s" % (label, str(e)[:60]))
 
 
+def _mp_chat_evs(uid, nick, prefix, activity_id=None):
+    """返回一个 events_fn(i)：每次产出一条 mini 对话事件（独立 conversationId）。"""
+    def _fn(i):
+        return [mp_chat_event(uid, nick, "%s-%s-%d" % (prefix, uuid.uuid4(), i),
+                              activity_id=activity_id)]
+    return _fn
+
+
 def t_sequential_tasks(s, uid, nick, log):
-    """小程序成长任务 Sequential_Tasks_1：mini 对话（+100c+5e）"""
+    """小程序成长任务 Sequential_Tasks_1：完成 1 次对话（+100c+5e）"""
     _mp_do_task(s, uid, nick, "Sequential_Tasks_1", log,
-                lambda: [mp_chat_event(uid, nick, "wbmp-" + str(uuid.uuid4()))],
-                "小程序对话任务")
+                _mp_chat_evs(uid, nick, "wbmp"), "小程序对话任务", target=1)
 
 
 def t_sequential_tasks_2(s, uid, nick, log):
-    """小程序成长任务 Sequential_Tasks_2：选中专家 + 完成对话（+200c+5e）"""
-    def _evs():
+    """小程序成长任务 Sequential_Tasks_2：选中专家并完成对话（+200c+5e）
+
+    判据 = 单条 mp 指纹 expert_actual_use（不带 activityId/conversationId）。
+    """
+    def _evs(i):
         eid, ename = _school_fetch_expert(s)
         if not eid:
             eid, ename = "WorkspaceBuilder", "专家"
-        conv = "wbexp-" + str(uuid.uuid4())
-        return mp_expert_use_events(uid, nick, eid, ename, conv)
-    _mp_do_task(s, uid, nick, "Sequential_Tasks_2", log, _evs, "小程序专家对话")
+        return [mp_mini_expert_event(uid, nick, eid, ename)]
+    _mp_do_task(s, uid, nick, "Sequential_Tasks_2", log, _evs, "小程序专家对话", target=1)
+
+
+def t_sequential_tasks_3(s, uid, nick, log):
+    """小程序成长任务 Sequential_Tasks_3：完成 5 次对话（+300c+5e）
+
+    判据与 Tasks_1 同形状（mini chat_request_send 无 activityId），按上报条数累加。
+    """
+    _mp_do_task(s, uid, nick, "Sequential_Tasks_3", log,
+                _mp_chat_evs(uid, nick, "wbmp3"), "小程序对话×5", target=5)
+
+
+def t_sequential_tasks_4(s, uid, nick, log):
+    """小程序成长任务 Sequential_Tasks_4：创建 1 个定时任务（+100c+5e）
+
+    判据：复用 automation_1 同源的桌面事件 automated_task_create_suc
+    （上游实测：PC 口径事件可点亮该 mp 任务）。
+    """
+    def _evs(i):
+        ev = {"eventCode": "automated_task_create_suc", "name": "wb2api 定时任务",
+              "source": "manually", "modelId": "fast-model", "modelIsThinking": True,
+              "connectorCount": 0, "skills": "", "skillCount": 0,
+              "scheduleType": "once", "mode": "LOCAL"}
+        report_desktop_events(s, uid, nick, [ev])
+        return []
+    st, cur, tgt = _mp_prog(s, "Sequential_Tasks_4")
+    if st is None:
+        log("   小程序定时任务: mp 口径未下发该任务，跳过")
+        return
+    if st in ("completed", "claimed"):
+        if st == "completed":
+            _mp_claim(s, "Sequential_Tasks_4", log)
+        else:
+            log("   小程序定时任务: 已领取，跳过")
+        return
+    if st == "not_accepted":
+        if not _mp_accept(s, "Sequential_Tasks_4", log):
+            log("   小程序定时任务: 今日未解锁（链式任务每日零点解锁下一环，明日自动重试）")
+            return
+        time.sleep(WRITE_GAP)
+    _evs(0)
+    log("   小程序定时任务: 桌面口径 automation 事件已上报")
+    time.sleep(2.5)
+    st2, cur2, tgt2 = _mp_prog(s, "Sequential_Tasks_4")
+    if st2 in ("completed", "claimed"):
+        log("   小程序定时任务: ✅ 已完成 %s/%s" % (cur2, tgt2))
+        if st2 == "completed":
+            _mp_claim(s, "Sequential_Tasks_4", log)
+    else:
+        log("   小程序定时任务: %s %s/%s（服务端暂未关联）" % (st2, cur2, tgt2))
+
+
+def t_sequential_tasks_5(s, uid, nick, log):
+    """小程序成长任务 Sequential_Tasks_5：使用 1 次 GLM5.2 模型（+100c+5e）"""
+    def _evs(i):
+        return [mp_model_chat_event(uid, nick, "wbmp5-%s-%d" % (uuid.uuid4(), i))]
+    _mp_do_task(s, uid, nick, "Sequential_Tasks_5", log, _evs, "小程序GLM5.2", target=1)
+
+
+def t_sequential_tasks_6(s, uid, nick, log):
+    """小程序成长任务 Sequential_Tasks_6：完成 10 次对话（target 以服务端下发为准）"""
+    _mp_do_task(s, uid, nick, "Sequential_Tasks_6", log,
+                _mp_chat_evs(uid, nick, "wbmp6"), "小程序对话×10", target=10)
+
+
+def t_sequential_tasks_7(s, uid, nick, log):
+    """小程序成长任务 Sequential_Tasks_7：体验灵感功能"""
+    def _evs(i):
+        evs = mp_playbook_events(uid, nick)
+        report_desktop_events(s, uid, nick, evs)   # PC 口径补一发（判据疑 PC/mp 双侧）
+        return evs
+    _mp_do_task(s, uid, nick, "Sequential_Tasks_7", log, _evs, "小程序灵感功能", target=1)
 
 
 def t_school_season(s, uid, nick, log):
     """小程序成长任务 school_season 校园日：mini 对话 + activityId（+100c+5e）"""
     _mp_do_task(s, uid, nick, "school_season", log,
-                lambda: [mp_chat_event(uid, nick, "wbmps-" + str(uuid.uuid4()),
-                                       activity_id=SCHOOL_ACTIVITY_ID)],
-                "校园日活动")
+                _mp_chat_evs(uid, nick, "wbmps", activity_id=SCHOOL_ACTIVITY_ID),
+                "校园日活动", target=1)
 
 
 def t_unknown_tasks(s, uid, nick, log):
@@ -1778,7 +1977,9 @@ def t_unknown_tasks(s, uid, nick, log):
              "Expert_Philanthropy", "Hp_Appearance", "Buddy_App", "Buddy_App_QQ", "Model_chat_GLM5.2",
              "black_cat", "Expert_team_use_3", "first_buddy", "chat_5", "skill_1", "expert_5",
              "template_5", "automation_1", "workstation_expert",
-             "Sequential_Tasks_1", "Sequential_Tasks_2", "school_season"}
+             "Sequential_Tasks_1", "Sequential_Tasks_2", "Sequential_Tasks_3",
+             "Sequential_Tasks_4", "Sequential_Tasks_5",
+             "Sequential_Tasks_6", "Sequential_Tasks_7", "school_season"}
     r = s.get(BASE + "/v2/activity/growth/tasks", timeout=25, verify=False).json()
     for t in r.get("data", {}).get("tasks", []):
         if not isinstance(t, dict):
@@ -2071,8 +2272,8 @@ def school_lottery(s, uid, nick, log):
 
 # ---------- 稳定指纹 & 事件构建（从 task_runner.py 移植） ----------
 def derive_id(uid, salt):
-    """由 uid 稳定派生 36 位 hex 设备标识（md5，幂等：同账号每次相同）。"""
-    return hashlib.md5(("%s:%s" % (salt, uid)).encode()).hexdigest()[:36]
+    """由 uid 稳定派生 36 位 hex 设备标识（sha256[:18]，对齐上游 deriveID，幂等）。"""
+    return hashlib.sha256(("%s:%s" % (salt, uid)).encode()).hexdigest()[:36]
 
 
 def desktop_fingerprint(uid, nick):
@@ -2188,20 +2389,37 @@ def desktop_buddy5_sequence(uid, nick, buddy_id, buddy_name):
     return ev
 
 
+DESKTOP_UA = "WorkBuddy/5.5.6 WorkBuddy/5.5.6 CLI/2.137.1"
+DESKTOP_BASE = "https://copilot.tencent.com"
+
+
 def report_desktop_events(s, uid, nick, events):
-    """以桌面指纹向 {BASE}/v2/report 批量上报；每个事件注入 desktop_fingerprint。"""
+    """桌面指纹上报：copilot.tencent.com/v2/report，**裸数组** + 桌面头族。
+
+    对齐上游 ReportDesktopEvent：desktopBase=chatBase(copilot 域)、body 为裸数组、
+    头含 X-Domain/X-Product/X-Request-ID/X-User-Id + 桌面 UA。
+    """
     fp = desktop_fingerprint(uid, nick)
     arr = []
     for e in events:
-        m = dict(e)
-        m.update(fp)
+        m = dict(fp)          # 先铺指纹
+        m.update(e)           # 业务字段优先（可覆盖同名设备键）
         arr.append(m)
-    out = {"common": {"userId": uid, "userNickname": nick, "ideName": "WorkBuddy",
-                      "ideType": "WorkBuddy", "machineId": fp["machineId"],
-                      "mode": "LOCAL", "userAgent": UA, "os": "win32",
-                      "timezone": "Asia/Shanghai"},
-           "events": arr}
-    return api_retry(s, "POST", BASE + "/v2/report", body=out)
+    hdr = {"Authorization": s.headers.get("Authorization", ""),
+           "Accept": "application/json, text/plain, */*",
+           "Content-Type": "application/json;charset=UTF-8",
+           "User-Agent": DESKTOP_UA,
+           "X-Domain": DESKTOP_BASE, "X-Product": "SaaS",
+           "X-Request-ID": derive_id(uid, "req") + str(int(time.time() * 1000) % 1000000)}
+    if uid:
+        hdr["X-User-Id"] = uid
+    s2 = requests.Session(); s2.trust_env = False
+    try:
+        r = s2.post(DESKTOP_BASE + "/v2/report", json=arr, headers=hdr,
+                    timeout=20, verify=False)
+        return r.status_code
+    except Exception:
+        return 0
 
 
 def report_web_event(s, uid, nick, event_code, page_url, element_id, element_name):
@@ -2296,8 +2514,12 @@ def run_account(idx, acc, do_desktop):
         t_desktop_tasks(s, uid, nick, tok, log, need_rich, need_skill)
     elif need_rich or need_skill:
         log("── 桌面任务跳过(--no-desktop): RichMeow=%s skill_1=%s ──" % (need_rich, need_skill))
+    else:
+        log("  🖥️ 桌面任务: 已完成（RichMeow/skill_1），跳过")
     # 任务
     log("  ☁️ ── 云端任务 ──")
+    # 前置：无 Buddy 实例时，其余任务 accept 会被服务端拒绝（prerequisite not met: first_buddy）
+    t_first_buddy(s, uid, nick, log)
     t_accept_all(s, uid, nick, log)
     t_sign(s, uid, nick, log)
     t_team_3(s, uid, nick, log)
@@ -2312,6 +2534,11 @@ def run_account(idx, acc, do_desktop):
     t_lighthouse(s, uid, nick, log)
     t_sequential_tasks(s, uid, nick, log)
     t_sequential_tasks_2(s, uid, nick, log)
+    t_sequential_tasks_3(s, uid, nick, log)
+    t_sequential_tasks_4(s, uid, nick, log)
+    t_sequential_tasks_5(s, uid, nick, log)
+    t_sequential_tasks_6(s, uid, nick, log)
+    t_sequential_tasks_7(s, uid, nick, log)
     t_school_season(s, uid, nick, log)
     t_badges(s, uid, nick, log)
     t_lottery(s, uid, nick, log)
@@ -2320,7 +2547,6 @@ def run_account(idx, acc, do_desktop):
     t_travel(s, uid, nick, log)
     t_redeem(s, uid, nick, log, streak.get("days"))
     t_gift_compensation(s, uid, nick, log)
-    t_first_buddy(s, uid, nick, log)
     t_makeup(s, uid, nick, log)
     t_workstation(s, uid, nick, log, tok)
     t_unknown_tasks(s, uid, nick, log)
@@ -2411,6 +2637,36 @@ def build_summary(summaries):
 
 
 # ---------- 推送通知（内置 PushPlus + Bark，无需外部模块） ----------
+def _wecom_notify(title, content):
+    """企业微信群机器人推送；未配置 WECOM_WEBHOOK 则跳过。
+
+    WECOM_WEBHOOK 支持两种形态：
+      · 完整 webhook URL：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx
+      · 仅 key：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx（自动补全 URL）
+    企业微信 text 消息上限 2048 字节，超长自动截断。
+    """
+    raw = os.environ.get("WECOM_WEBHOOK", "").strip()
+    if not raw:
+        return False
+    url = raw if raw.startswith("http") else (
+        "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=" + raw)
+    msg = "%s\n%s" % (title, content)
+    if len(msg.encode("utf-8")) > 2000:
+        msg = msg.encode("utf-8")[:1900].decode("utf-8", "ignore") + "\n...(内容过长已截断)"
+    try:
+        s = requests.Session(); s.trust_env = False
+        r = s.post(url, json={"msgtype": "text", "text": {"content": msg}},
+                   timeout=20, verify=False)
+        d = r.json()
+        if d.get("errcode") == 0:
+            print("📢 企业微信推送成功")
+            return True
+        print("📢 企业微信推送失败: %s" % str(d.get("errmsg", ""))[:80])
+    except Exception as e:
+        print("📢 企业微信异常: %s" % str(e)[:80])
+    return False
+
+
 def _bark_notify(title, content):
     """Bark 推送（iOS）；未配置 BARK_URL 则跳过。直接 POST 到 BARK_URL（/:device_key 路由），
     不加 /push 后缀——bark-server 会把 URL 路径第二段解析为 body 参数覆盖 JSON。"""
@@ -2455,10 +2711,11 @@ def send_notify(title, content):
 
 
 def send_notify_all(title, content):
-    """推送通知到所有已配置的渠道（PushPlus + Bark）。"""
+    """推送通知到所有已配置的渠道（PushPlus + Bark + 企业微信）。"""
     r1 = send_notify(title, content)
     r2 = _bark_notify(title, content)
-    return r1 or r2
+    r3 = _wecom_notify(title, content)
+    return r1 or r2 or r3
 
 
 def main():
